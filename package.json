@@ -1,0 +1,77 @@
+{
+  "name": "@visitorfilters/tracker",
+  "version": "1.0.0",
+  "description": "VisitorFilters visitor intelligence & threat prevention SDK",
+  "author": "VisitorFilters <hello@visitorfilters.com>",
+  "license": "MIT",
+  "homepage": "https://visitorfilters.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aykuthankircali/visitorfilter.git",
+    "directory": "packages/tracker"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js",
+      "require": "./dist/react.cjs"
+    },
+    "./vue": {
+      "types": "./dist/vue.d.ts",
+      "import": "./dist/vue.js",
+      "require": "./dist/vue.cjs"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.js",
+      "require": "./dist/next.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "vue": "^3.5.35"
+  },
+  "peerDependencies": {
+    "react": ">=17",
+    "vue": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "analytics",
+    "security",
+    "visitor-tracking",
+    "threat-prevention",
+    "visitorfilters"
+  ]
+}
