@@ -3,9 +3,20 @@ import { generateId } from './fingerprint'
 import { getOrCreateSessionId, getOrCreateVisitorId } from './session'
 import { sendBeaconOrFetch, postJson } from './transport'
 
-const IMMEDIATE_TYPES = new Set(['pageview', 'route_change', 'error'])
+const IMMEDIATE_TYPES = new Set(['pageview', 'route_change', 'layout_snapshot', 'error'])
 const CRITICAL_TYPES = new Set(['pageview', 'session_end', 'route_change', 'error'])
 const BATCH_FLUSH_SIZE = 10
+
+type LayoutElement = {
+  tag: unknown
+  role: unknown
+  label: unknown
+  selector: unknown
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 export const createCollector = async (config: TrackerConfig): Promise<TrackerInstance> => {
   const { siteKey, debug = false } = config
@@ -24,6 +35,8 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
   let maxScroll = 0
   let currentPath = window.location.pathname
   let sessionEnded = false
+  let lastLayoutHash: string | null = null
+  const sentLayoutSnapshots = new Set<string>()
 
   const log = (...args: unknown[]): void => {
     if (debug) console.log('[VF]', ...args)
@@ -196,10 +209,200 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
     }
   }, { passive: true })
 
+  const cssEscape = (value: string): string => {
+    return window.CSS?.escape ? window.CSS.escape(value) : value.replace(/["\\]/g, '\\$&')
+  }
+
+  const selectorPart = (element: Element): string => {
+    const tag = element.tagName.toLowerCase()
+
+    if (element.id) {
+      return `${tag}#${cssEscape(element.id)}`
+    }
+
+    const testIdAttr = element.hasAttribute('data-testid') ? 'data-testid' : (element.hasAttribute('data-test') ? 'data-test' : null)
+    const testId = testIdAttr ? element.getAttribute(testIdAttr) : null
+    if (testId) {
+      return `${tag}[${testIdAttr}="${cssEscape(testId)}"]`
+    }
+
+    const heatmapLabel = element.getAttribute('data-heatmap-label')
+    if (heatmapLabel) {
+      return `${tag}[data-heatmap-label="${cssEscape(heatmapLabel.substring(0, 80))}"]`
+    }
+
+    const role = element.getAttribute('role')
+    if (role) {
+      return `${tag}[role="${cssEscape(role)}"]`
+    }
+
+    let index = 1
+    let sibling = element.previousElementSibling
+    while (sibling) {
+      if (sibling.tagName === element.tagName) index++
+      sibling = sibling.previousElementSibling
+    }
+
+    return `${tag}:nth-of-type(${index})`
+  }
+
+  const elementSelector = (element: Element): string => {
+    const parts: string[] = []
+    let current: Element | null = element
+
+    while (current && current.nodeType === 1 && current !== document.body && parts.length < 4) {
+      parts.unshift(selectorPart(current))
+      current = current.parentElement
+    }
+
+    return parts.join(' > ')
+  }
+
+  const heatmapElement = (target: EventTarget | null): Element | null => {
+    if (!(target instanceof Element)) return null
+
+    return target.closest(
+      'a, button, input, select, textarea, summary, label, [role="button"], [role="link"], [data-heatmap-label], [data-testid], [data-test], [aria-label]',
+    ) || target
+  }
+
+  const elementPayload = (element: Element | null): Record<string, unknown> => {
+    if (!element) return {}
+
+    const isFormControl = ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)
+    const text = isFormControl ? '' : (element.textContent || '').trim().replace(/\s+/g, ' ').substring(0, 120)
+    const label = (
+      element.getAttribute('data-heatmap-label') ||
+      element.getAttribute('aria-label') ||
+      element.getAttribute('title') ||
+      text ||
+      element.getAttribute('name') ||
+      element.getAttribute('id') ||
+      ''
+    ).trim().replace(/\s+/g, ' ').substring(0, 120)
+
+    return {
+      element_tag: element.tagName.toLowerCase(),
+      element_role: element.getAttribute('role') || null,
+      element_label: label || null,
+      element_text: text || null,
+      element_selector: elementSelector(element),
+    }
+  }
+
+  const hash64 = (value: string): string => {
+    let hash = 0x811c9dc5
+
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i)
+      hash = Math.imul(hash, 0x01000193)
+    }
+
+    const part = (hash >>> 0).toString(16).padStart(8, '0')
+
+    return part.repeat(8).substring(0, 64)
+  }
+
+  const normalizedRect = (element: Element): { x: number; y: number; width: number; height: number } | null => {
+    const rect = element.getBoundingClientRect()
+    const viewportWidth = Math.max(window.innerWidth, 1)
+    const viewportHeight = Math.max(window.innerHeight, 1)
+    const left = Math.max(0, Math.min(rect.left, viewportWidth))
+    const top = Math.max(0, Math.min(rect.top, viewportHeight))
+    const right = Math.max(0, Math.min(rect.right, viewportWidth))
+    const bottom = Math.max(0, Math.min(rect.bottom, viewportHeight))
+    const width = right - left
+    const height = bottom - top
+
+    if (width < 4 || height < 4) return null
+
+    return {
+      x: Math.round((left / viewportWidth) * 1000),
+      y: Math.round((top / viewportHeight) * 1000),
+      width: Math.round((width / viewportWidth) * 1000),
+      height: Math.round((height / viewportHeight) * 1000),
+    }
+  }
+
+  const layoutElements = (): LayoutElement[] => {
+    if (typeof document.querySelectorAll !== 'function') return []
+
+    const selector = 'a, button, input, select, textarea, summary, label, [role="button"], [role="link"], [data-heatmap-label], [data-testid], [data-test], [aria-label]'
+    const seen = new Set<string>()
+
+    return Array.from(document.querySelectorAll(selector))
+      .slice(0, 160)
+      .map((element) => {
+        const rect = normalizedRect(element)
+        if (!rect) return null
+
+        const payload = elementPayload(element)
+        const elementKey = String(payload.element_selector || '')
+        if (!elementKey || seen.has(elementKey)) return null
+        seen.add(elementKey)
+
+        return {
+          tag: payload.element_tag,
+          role: payload.element_role,
+          label: payload.element_label,
+          selector: payload.element_selector,
+          ...rect,
+        }
+      })
+      .filter((element): element is LayoutElement => element !== null)
+      .slice(0, 80)
+  }
+
+  const captureLayoutSnapshot = (): void => {
+    const elements = layoutElements()
+    if (elements.length === 0) return
+
+    const viewport = `${window.innerWidth}x${window.innerHeight}`
+    const signature = [
+      window.location.pathname,
+      viewport,
+      elements.map((element) => `${element.selector}:${element.label}:${element.x}:${element.y}:${element.width}:${element.height}`).join(';'),
+    ].join('|')
+    const domHash = hash64(signature)
+    const snapshotKey = `${window.location.pathname}|${viewport}|${domHash}`
+
+    lastLayoutHash = domHash
+
+    if (sentLayoutSnapshots.has(snapshotKey)) return
+    sentLayoutSnapshots.add(snapshotKey)
+
+    track('layout_snapshot', {
+      dom_hash: domHash,
+      viewport_w: window.innerWidth,
+      viewport_h: window.innerHeight,
+      elements,
+    })
+  }
+
   document.addEventListener('click', (e) => {
-    const target = (e.target as Element).closest('a, button')
+    const target = heatmapElement(e.target)
+    const x = Math.round(e.clientX || 0)
+    const y = Math.round(e.clientY || 0)
+    const clickPayload = {
+      x,
+      y,
+      viewport_x: x,
+      viewport_y: y,
+      page_x: Math.round(e.pageX || x + window.scrollX),
+      page_y: Math.round(e.pageY || y + window.scrollY),
+      scroll_x: Math.round(window.scrollX || 0),
+      scroll_y: Math.round(window.scrollY || 0),
+      document_w: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth || 0),
+      document_h: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
+      dom_hash: lastLayoutHash || hash64(`${window.location.pathname}|${window.innerWidth}x${window.innerHeight}`),
+      ...elementPayload(target),
+    }
+
+    track('heatmap_sample', clickPayload)
+
     if (target) {
       track('click', {
+        ...clickPayload,
         tag: target.tagName,
         text: (target as HTMLElement).innerText?.substring(0, 50) ?? '',
       })
@@ -222,6 +425,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
       maxScroll = 0
       void checkPolicy()
       track('route_change')
+      setTimeout(() => captureLayoutSnapshot(), 250)
     }
   }
 
@@ -244,6 +448,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
 
   if (config.autoPageview !== false) {
     track('pageview')
+    setTimeout(() => captureLayoutSnapshot(), 250)
   }
 
   // Dispatch ready event for external hooks (e.g. WP plugin)
