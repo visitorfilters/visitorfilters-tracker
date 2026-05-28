@@ -1,14 +1,20 @@
 {
   "name": "@visitorfilters/tracker",
   "version": "1.0.0",
-  "description": "VisitorFilters visitor intelligence & threat prevention SDK",
-  "author": "VisitorFilters <hello@visitorfilters.com>",
+  "description": "Visitor Filters visitor intelligence & threat prevention SDK",
+  "author": "Visitor Filters <hello@visitorfilters.com>",
   "license": "MIT",
   "homepage": "https://visitorfilters.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aykuthankircali/visitorfilter.git",
-    "directory": "packages/tracker"
+    "url": "git+https://github.com/visitorfilters/visitorfilters-tracker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/visitorfilters/visitorfilters-tracker/issues"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
   },
   "type": "module",
   "main": "./dist/index.cjs",
