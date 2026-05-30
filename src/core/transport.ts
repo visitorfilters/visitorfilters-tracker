@@ -1,4 +1,4 @@
-export const sendBeaconOrFetch = (url: string, body: string): void => {
+export const sendBeaconOrFetch = (url: string, body: string, onResponse?: (data: any) => void): void => {
   if (navigator.sendBeacon && document.visibilityState === 'hidden') {
     navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
     return
@@ -12,7 +12,13 @@ export const sendBeaconOrFetch = (url: string, body: string): void => {
       headers: { 'Content-Type': 'application/json' },
       body,
       keepalive: true,
-    }).catch(() => {
+    })
+      .then((res) => {
+        if (res.ok && onResponse) {
+          res.json().then(data => onResponse(data)).catch(() => {})
+        }
+      })
+      .catch(() => {
       if (retries < 3) {
         retries++
         setTimeout(attempt, Math.pow(2, retries) * 1000)

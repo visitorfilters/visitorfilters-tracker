@@ -95,7 +95,11 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
     const batch = [...eventQueue]
     eventQueue = []
     log('flush', batch.length, 'events')
-    sendBeaconOrFetch(ingestUrl, buildBatch(batch))
+    sendBeaconOrFetch(ingestUrl, buildBatch(batch), (data) => {
+      if (data && data.enforce) {
+        void checkPolicy()
+      }
+    })
   }
 
   // Track
@@ -149,11 +153,20 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
         }
       } else if (data.decision === 'redirect' && data.redirect_url) {
         window.location.href = data.redirect_url
-      } else if (
-        (data.decision === 'challenge' || data.decision === 'js_challenge') &&
-        data.challenge_token
-      ) {
-        await solveChallenge(data.challenge_token)
+      } else if (data.decision === 'js_challenge' && data.challenge_token) {
+        document.documentElement.innerHTML = '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Just a moment...</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;color:#1e293b}.c{text-align:center;padding:2rem}.loader{border:4px solid #f3f3f3;border-top:4px solid #3b82f6;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 1.5rem}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}h1{font-size:1.5rem;margin-bottom:.5rem}p{color:#64748b;font-size:.875rem}</style></head><body><div class="c"><div class="loader"></div><h1>Checking your browser before accessing the site.</h1><p>This process is automatic. Your browser will redirect to your requested content shortly.</p></div></body></html>'
+        setTimeout(() => void solveChallenge(data.challenge_token, true), 2500)
+      } else if (data.decision === 'challenge' && data.challenge_token) {
+        document.documentElement.innerHTML = '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Security Check</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;color:#1e293b}.c{text-align:center;padding:2rem;background:#fff;border-radius:8px;box-shadow:0 4px 6px -1px rgb(0 0 0 / .1)}h1{font-size:1.5rem;margin-bottom:1rem}p{color:#64748b;font-size:.875rem;margin-bottom:1.5rem}.btn{background:#3b82f6;color:#fff;border:none;padding:.75rem 1.5rem;font-size:1rem;border-radius:6px;cursor:pointer;transition:background .2s}.btn:hover{background:#2563eb}</style></head><body><div class="c"><h1>Security Check</h1><p>Please verify you are human to continue.</p><button class="btn" id="vf-human-btn">I am human</button></div></body></html>'
+        const btn = document.getElementById('vf-human-btn')
+        if (btn) {
+          btn.addEventListener('click', (e) => {
+            const target = e.target as HTMLButtonElement
+            target.innerText = 'Verifying...'
+            target.disabled = true
+            void solveChallenge(data.challenge_token, true)
+          })
+        }
       } else if (data.decision === 'throttle') {
         ;(window as any).vfThrottledUntil = Date.now() + ((data.retry_after || 60) * 1000)
         log('throttled for', data.retry_after, 'seconds')
@@ -163,7 +176,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
     }
   }
 
-  const solveChallenge = async (token: string): Promise<void> => {
+  const solveChallenge = async (token: string, reload = false): Promise<void> => {
     try {
       await postJson(challengeUrl, {
         key: siteKey,
@@ -172,7 +185,12 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
         sid: sessionId,
         vid: visitorId,
       })
-      setTimeout(() => void checkPolicy(), 100)
+      
+      if (reload) {
+        window.location.reload()
+      } else {
+        setTimeout(() => void checkPolicy(), 100)
+      }
     } catch {
       // Silent fail
     }
