@@ -5,6 +5,8 @@ export interface TrackerConfig {
   autoPageview?: boolean
   autoRouteChange?: boolean
   debug?: boolean
+  brandingBadge?: string | boolean
+  badgePosition?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 }
 
 export interface TrackEvent {
@@ -57,6 +59,13 @@ export interface PolicyResponse {
   redirect_url?: string
   challenge_token?: string
   retry_after?: number
+  branding?: {
+    enabled: boolean
+    url: string
+    title: string
+    text: string
+    icon_url: string
+  }
 }
 
 export interface TrackerInstance {

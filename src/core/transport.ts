@@ -29,11 +29,12 @@ export const sendBeaconOrFetch = (url: string, body: string, onResponse?: (data:
   attempt()
 }
 
-export const postJson = async <T>(url: string, payload: unknown): Promise<T> => {
+export const postJson = async <T>(url: string, payload: unknown, options?: RequestInit): Promise<T> => {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    ...options,
   })
   return res.json() as Promise<T>
 }

@@ -42,6 +42,95 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
     if (debug) console.log('[VF]', ...args)
   }
 
+  const badgeId = 'vf-branding-badge'
+
+  const renderBrandingBadge = (branding: any): void => {
+    const existing = document.getElementById(badgeId)
+
+    const brandingBadgePreference = typeof config.brandingBadge !== 'undefined'
+      ? (typeof config.brandingBadge === 'boolean' ? (config.brandingBadge ? '1' : '0') : config.brandingBadge)
+      : undefined
+
+    if (brandingBadgePreference === '0' || !branding || branding.enabled !== true) {
+      if (existing) existing.remove()
+      return
+    }
+
+    if (existing) return
+
+    const position = config.badgePosition || 'bottom-right'
+    const placementStyles = {
+      'bottom-right': ['right:14px', 'bottom:14px'],
+      'bottom-left': ['left:14px', 'bottom:14px'],
+      'top-right': ['right:14px', 'top:14px'],
+      'top-left': ['left:14px', 'top:14px'],
+    }[position] || ['right:14px', 'bottom:14px']
+
+    const link = document.createElement('a')
+    link.id = badgeId
+    link.href = branding.url || 'https://visitorfilters.com?ref=badge'
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.title = branding.title || 'Visitor protection by VisitorFilters'
+    link.setAttribute('aria-label', link.title)
+    link.style.cssText = [
+      ...placementStyles,
+      'position:fixed',
+      'z-index:2147483647',
+      'display:inline-flex',
+      'align-items:center',
+      'gap:7px',
+      'max-width:calc(100vw - 28px)',
+      'padding:6px 9px',
+      'border:1px solid rgba(15,23,42,.12)',
+      'border-radius:4px',
+      'background:rgba(255,255,255,.94)',
+      'color:#334155',
+      'font:500 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+      'text-decoration:none',
+      'box-shadow:0 2px 8px rgba(15,23,42,.12)',
+      'backdrop-filter:saturate(120%) blur(4px)',
+      'transition:opacity .25s ease-in-out',
+      'opacity:0.45',
+    ].join(';')
+
+    link.addEventListener('mouseenter', () => {
+      link.style.opacity = '1'
+    })
+    link.addEventListener('mouseleave', () => {
+      link.style.opacity = '0.45'
+    })
+    link.addEventListener('focus', () => {
+      link.style.opacity = '1'
+    })
+    link.addEventListener('blur', () => {
+      link.style.opacity = '0.45'
+    })
+
+    const icon = document.createElement('img')
+    icon.src = branding.icon_url || '/favicon.svg'
+    icon.alt = ''
+    icon.width = 14
+    icon.height = 14
+    icon.loading = 'lazy'
+    icon.decoding = 'async'
+    icon.style.cssText = 'width:14px;height:14px;display:block;flex:0 0 auto'
+
+    const text = document.createElement('span')
+    text.textContent = branding.text || 'Protected by VisitorFilters'
+    text.style.cssText = 'display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+
+    link.appendChild(icon)
+    link.appendChild(text)
+
+    const mount = () => document.body && document.body.appendChild(link)
+    if (document.body) {
+      mount()
+    } else {
+      document.addEventListener('DOMContentLoaded', mount, { once: true })
+    }
+  }
+
   // Bot signals
   document.addEventListener('mousemove', () => mouseMoves++, { passive: true })
   document.addEventListener('keydown', () => keyPresses++, { passive: true })
@@ -143,6 +232,8 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
         vid: visitorId,
       })
 
+      renderBrandingBadge(data.branding)
+
       if (data.decision === 'block') {
         if (data.block_page_html) {
           document.documentElement.innerHTML = data.block_page_html
@@ -155,7 +246,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
         window.location.href = data.redirect_url
       } else if (data.decision === 'js_challenge' && data.challenge_token) {
         document.documentElement.innerHTML = '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Just a moment...</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;color:#1e293b}.c{text-align:center;padding:2rem}.loader{border:4px solid #f3f3f3;border-top:4px solid #3b82f6;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 1.5rem}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}h1{font-size:1.5rem;margin-bottom:.5rem}p{color:#64748b;font-size:.875rem}</style></head><body><div class="c"><div class="loader"></div><h1>Checking your browser before accessing the site.</h1><p>This process is automatic. Your browser will redirect to your requested content shortly.</p></div></body></html>'
-        setTimeout(() => void solveChallenge(data.challenge_token, true), 2500)
+        setTimeout(() => void solveChallenge(data.challenge_token!, true), 2500)
       } else if (data.decision === 'challenge' && data.challenge_token) {
         document.documentElement.innerHTML = '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Security Check</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;color:#1e293b}.c{text-align:center;padding:2rem;background:#fff;border-radius:8px;box-shadow:0 4px 6px -1px rgb(0 0 0 / .1)}h1{font-size:1.5rem;margin-bottom:1rem}p{color:#64748b;font-size:.875rem;margin-bottom:1.5rem}.btn{background:#3b82f6;color:#fff;border:none;padding:.75rem 1.5rem;font-size:1rem;border-radius:6px;cursor:pointer;transition:background .2s}.btn:hover{background:#2563eb}</style></head><body><div class="c"><h1>Security Check</h1><p>Please verify you are human to continue.</p><button class="btn" id="vf-human-btn">I am human</button></div></body></html>'
         const btn = document.getElementById('vf-human-btn')
@@ -164,7 +255,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
             const target = e.target as HTMLButtonElement
             target.innerText = 'Verifying...'
             target.disabled = true
-            void solveChallenge(data.challenge_token, true)
+            void solveChallenge(data.challenge_token!, true)
           })
         }
       } else if (data.decision === 'throttle') {
@@ -184,7 +275,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
         path: window.location.pathname,
         sid: sessionId,
         vid: visitorId,
-      })
+      }, { keepalive: true })
       
       if (reload) {
         window.location.reload()
