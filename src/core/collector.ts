@@ -56,15 +56,36 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
       return
     }
 
-    if (existing) return
+    if (existing) existing.remove()
 
-    const position = config.badgePosition || 'bottom-right'
-    const placementStyles = {
-      'bottom-right': ['right:14px', 'bottom:14px'],
-      'bottom-left': ['left:14px', 'bottom:14px'],
-      'top-right': ['right:14px', 'top:14px'],
-      'top-left': ['left:14px', 'top:14px'],
-    }[position] || ['right:14px', 'bottom:14px']
+    const offset = (value: unknown, fallback: number): number => {
+      const parsed = parseInt(String(value), 10)
+      if (!Number.isFinite(parsed)) return fallback
+
+      return Math.max(0, Math.min(parsed, 1000))
+    }
+
+    let vertical = branding.vertical === 'top' ? 'top' : 'bottom'
+    let horizontal = branding.horizontal === 'left' ? 'left' : 'right'
+    let vOffset = offset(branding.v_offset, 14)
+    let hOffset = offset(branding.h_offset, 14)
+
+    if (config.badgePosition || !branding.vertical) {
+      const badgePosition = config.badgePosition || 'bottom-right'
+      const parts = badgePosition.split('-')
+      if (parts.length === 2) {
+        vertical = parts[0] === 'top' ? 'top' : 'bottom'
+        horizontal = parts[1] === 'left' ? 'left' : 'right'
+      }
+    }
+
+    if (typeof config.badgeOffsetY !== 'undefined') vOffset = offset(config.badgeOffsetY, 14)
+    if (typeof config.badgeOffsetX !== 'undefined') hOffset = offset(config.badgeOffsetX, 14)
+
+    const placementStyles = [
+      `${vertical}:${vOffset}px`,
+      `${horizontal}:${hOffset}px`,
+    ]
 
     const link = document.createElement('a')
     link.id = badgeId
@@ -90,22 +111,7 @@ export const createCollector = async (config: TrackerConfig): Promise<TrackerIns
       'text-decoration:none',
       'box-shadow:0 2px 8px rgba(15,23,42,.12)',
       'backdrop-filter:saturate(120%) blur(4px)',
-      'transition:opacity .25s ease-in-out',
-      'opacity:0.45',
     ].join(';')
-
-    link.addEventListener('mouseenter', () => {
-      link.style.opacity = '1'
-    })
-    link.addEventListener('mouseleave', () => {
-      link.style.opacity = '0.45'
-    })
-    link.addEventListener('focus', () => {
-      link.style.opacity = '1'
-    })
-    link.addEventListener('blur', () => {
-      link.style.opacity = '0.45'
-    })
 
     const icon = document.createElement('img')
     icon.src = branding.icon_url || '/favicon.svg'
