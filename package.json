@@ -1,6 +1,6 @@
 {
   "name": "@visitorfilters/tracker",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "VisitorFilters visitor intelligence & threat prevention SDK",
   "author": "VisitorFilters <support@visitorfilters.com>",
   "license": "MIT",
